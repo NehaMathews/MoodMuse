@@ -25,6 +25,8 @@ cp .env.example .env
 npm run dev
 ```
 
+The dependency tree is captured in `package-lock.json`, so installs should be repeatable across local machines and demos.
+
 Frontend: `http://localhost:5173`  
 Backend: `http://localhost:5000/api`
 
