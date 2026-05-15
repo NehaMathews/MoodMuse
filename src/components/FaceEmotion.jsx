@@ -1,94 +1,98 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import Icon from "./Icon";
+import { analyzeStillFrame } from "../services/faceAnalyzer";
 
-const emotions = ["Happy", "Sad", "Angry", "Relaxed"];
+const emptyScores = [
+  { name: "Happy", value: 0 },
+  { name: "Sad", value: 0 },
+  { name: "Angry", value: 0 },
+  { name: "Relaxed", value: 0 },
+  { name: "Energetic", value: 0 }
+];
 
 export function FaceEmotion({ onDetect, theme }) {
   const videoRef = useRef(null);
   const [active, setActive] = useState(false);
-  const [tick, setTick] = useState(0);
-  const [realScores, setRealScores] = useState(null);
+  const [status, setStatus] = useState("Camera idle");
+  const [scores, setScores] = useState(emptyScores);
+  const [lastMood, setLastMood] = useState("");
+  const [captureCount, setCaptureCount] = useState(0);
 
   useEffect(() => {
     if (!active) return undefined;
     let stream;
+    setStatus("Camera ready. Capture when your face is centered.");
     navigator.mediaDevices?.getUserMedia({ video: true }).then((media) => {
       stream = media;
       if (videoRef.current) videoRef.current.srcObject = media;
-    }).catch(() => setActive(false));
+    }).catch(() => {
+      setStatus("Camera permission was blocked.");
+      setActive(false);
+    });
     return () => stream?.getTracks().forEach((track) => track.stop());
   }, [active]);
 
-  useEffect(() => {
-    const id = setInterval(() => setTick((value) => value + 1), 1100);
-    return () => clearInterval(id);
-  }, []);
+  const confidence = useMemo(() => [...scores].sort((a, b) => b.value - a.value), [scores]);
 
-  useEffect(() => {
-    if (!active || !videoRef.current) return undefined;
-    let cancelled = false;
-    let detector;
+  async function captureAndAnalyze() {
+    if (!videoRef.current) return;
+    setScores(emptyScores);
+    setLastMood("");
+    setCaptureCount((count) => count + 1);
+    setStatus("Analyzing this photo locally...");
+    const video = videoRef.current;
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 360;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    import("face-api.js").then(async (faceapi) => {
-      try {
-        await faceapi.nets.tinyFaceDetector.loadFromUri("/models");
-        await faceapi.nets.faceExpressionNet.loadFromUri("/models");
-        detector = setInterval(async () => {
-          if (!videoRef.current || cancelled) return;
-          const result = await faceapi
-            .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions())
-            .withFaceExpressions();
-          if (!result?.expressions) return;
-          const expressions = result.expressions;
-          setRealScores([
-            { name: "Happy", value: Math.round((expressions.happy || 0) * 100) },
-            { name: "Sad", value: Math.round((expressions.sad || 0) * 100) },
-            { name: "Angry", value: Math.round((expressions.angry || 0) * 100) },
-            { name: "Relaxed", value: Math.round(((expressions.neutral || 0) + (expressions.surprised || 0) * 0.2) * 100) }
-          ]);
-        }, 900);
-      } catch {
-        setRealScores(null);
-      }
-    });
+    const analyzed = await analyzeStillFrame(canvas);
+    setScores(analyzed.scores);
+    setLastMood(analyzed.mood);
+    setStatus(analyzed.note);
+    if (analyzed.mood) onDetect(analyzed.mood, "face");
+  }
 
-    return () => {
-      cancelled = true;
-      if (detector) clearInterval(detector);
-    };
-  }, [active]);
-
-  const confidence = useMemo(() => {
-    if (realScores?.some((item) => item.value > 0)) {
-      return [...realScores].sort((a, b) => b.value - a.value);
-    }
-    const base = emotions.map((name, i) => ({
-      name,
-      value: active ? Math.round(28 + Math.abs(Math.sin((tick + i) * 0.8)) * 62) : 0
-    }));
-    return base.sort((a, b) => b.value - a.value);
-  }, [active, tick, realScores]);
-
-  useEffect(() => {
-    if (active && confidence[0]?.value > 70) onDetect(confidence[0].name, "face");
-  }, [active, confidence, onDetect]);
+  function stopCamera() {
+    const stream = videoRef.current?.srcObject;
+    stream?.getTracks().forEach((track) => track.stop());
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setActive(false);
+  }
 
   return (
     <motion.div initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="panel overflow-hidden">
       <div className="flex items-center justify-between">
         <div>
           <p className="eyebrow">Face emotion</p>
-          <h3 className="panel-title">Live camera aura.</h3>
+          <h3 className="panel-title">Capture once, analyze once.</h3>
         </div>
-        <button onClick={() => setActive((value) => !value)} className="icon-button" aria-label="Toggle camera">
+        <button onClick={() => (active ? stopCamera() : setActive(true))} className="icon-button" aria-label="Toggle camera" type="button">
           <Icon name="Camera" />
         </button>
       </div>
       <div className="relative mt-5 aspect-video overflow-hidden rounded-3xl border border-white/15 bg-black/35">
-        {active ? <video ref={videoRef} autoPlay muted playsInline className="h-full w-full object-cover opacity-80" /> : <div className="grid h-full place-items-center text-white/45">Camera idle</div>}
+        {active ? <video ref={videoRef} autoPlay muted playsInline className="h-full w-full object-cover opacity-85" /> : <div className="grid h-full place-items-center text-white/45">Camera idle</div>}
         <div className="scan-frame" style={{ "--accent": theme.accent }} />
       </div>
+      <p className="mt-3 rounded-2xl bg-white/10 px-4 py-3 text-sm leading-6 text-white/70">
+        {status} The captured photo is analyzed in memory and is not saved, uploaded, or stored.
+      </p>
+      <div className="mt-3 flex items-center justify-between rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
+        <span className="text-sm font-bold text-white/55">Current camera reading</span>
+        <span className="font-black text-white">{lastMood || "Waiting"} {captureCount ? `#${captureCount}` : ""}</span>
+      </div>
+      <button
+        onClick={captureAndAnalyze}
+        disabled={!active}
+        type="button"
+        className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-white px-5 py-4 font-black text-zinc-950 transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-45"
+      >
+        <Icon name="Spark" />
+        Capture and read mood
+      </button>
       <div className="mt-5 space-y-3">
         {confidence.map((item) => (
           <div key={item.name}>
