@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
-import { BarChart, Bar, LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, PieChart, Pie, Cell } from "recharts";
+import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, PieChart, Pie, Cell } from "recharts";
 import { getDashboard } from "../services/api";
 
-export function Dashboard({ theme, tracks }) {
+export function Dashboard({ theme, tracks, user, mood, activityVersion }) {
   const [data, setData] = useState(null);
 
   useEffect(() => {
-    getDashboard().then(setData);
-  }, []);
+    getDashboard(user.id).then(setData);
+  }, [user.id, mood, tracks, activityVersion]);
 
   if (!data) return <section id="dashboard" className="section"><div className="panel h-80 skeleton" /></section>;
 
@@ -28,7 +28,7 @@ export function Dashboard({ theme, tracks }) {
                 <XAxis dataKey="day" stroke="rgba(255,255,255,.55)" />
                 <YAxis stroke="rgba(255,255,255,.35)" />
                 <Tooltip contentStyle={{ background: "rgba(10,10,16,.9)", border: "1px solid rgba(255,255,255,.14)", borderRadius: 18 }} />
-                <Line type="monotone" dataKey="Happy" stroke={theme.accent} strokeWidth={4} dot={false} />
+                <Line type="monotone" dataKey={mood} stroke={theme.accent} strokeWidth={4} dot={false} />
                 <Line type="monotone" dataKey="Focused" stroke="#fff" strokeWidth={3} dot={false} />
                 <Line type="monotone" dataKey="Relaxed" stroke="#70e1ff" strokeWidth={3} dot={false} />
               </LineChart>
@@ -66,7 +66,7 @@ export function Dashboard({ theme, tracks }) {
         <div className="panel">
           <p className="eyebrow">Recently played</p>
           <div className="mt-5 space-y-3">
-            {tracks.slice(0, 3).map((track) => (
+            {(data.recentSongs?.length ? data.recentSongs : tracks).slice(0, 3).map((track) => (
               <div key={track.id} className="flex items-center gap-3 rounded-2xl bg-white/10 p-3">
                 <img src={track.albumArt} alt="" className="h-12 w-12 rounded-xl object-cover" />
                 <div>
