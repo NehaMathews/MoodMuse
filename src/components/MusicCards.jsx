@@ -1,9 +1,37 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { motion } from "framer-motion";
 import Icon from "./Icon";
+import { recordPlayed } from "../services/api";
 
-export function MusicCards({ tracks, theme }) {
+export function MusicCards({ tracks, theme, mood, user, onPlayed }) {
   const [playing, setPlaying] = useState(null);
+  const audioRef = useRef(null);
+
+  function playTrack(track) {
+    if (playing === track.id) {
+      audioRef.current?.pause();
+      setPlaying(null);
+      return;
+    }
+    audioRef.current?.pause();
+    const audio = new Audio(track.previewUrl);
+    audio.currentTime = 0;
+    audio.volume = 0.55;
+    audioRef.current = audio;
+    setPlaying(track.id);
+    recordPlayed(user.id, track, mood);
+    onPlayed?.();
+    audio.play().catch(() => {
+      setPlaying(null);
+      window.open(track.spotifyUrl, "_blank", "noopener,noreferrer");
+    });
+    setTimeout(() => {
+      if (audioRef.current === audio) {
+        audio.pause();
+        setPlaying(null);
+      }
+    }, 30000);
+  }
 
   return (
     <div className="grid gap-4 md:grid-cols-3">
@@ -20,9 +48,10 @@ export function MusicCards({ tracks, theme }) {
             <img src={track.albumArt} alt="" className="h-full w-full object-cover transition duration-700 hover:scale-110" />
             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
             <button
-              onClick={() => setPlaying(playing === track.id ? null : track.id)}
+              onClick={() => playTrack(track)}
               className="absolute bottom-4 right-4 grid h-12 w-12 place-items-center rounded-full bg-white text-zinc-950 shadow-glow"
               aria-label="Play preview"
+              type="button"
             >
               <Icon name={playing === track.id ? "Pause" : "Play"} className="h-5 w-5" />
             </button>
@@ -30,6 +59,7 @@ export function MusicCards({ tracks, theme }) {
           <div className="mt-4">
             <h3 className="text-xl font-black text-white">{track.title}</h3>
             <p className="text-white/55">{track.artist}</p>
+            {track.language && <p className="mt-1 text-xs font-black uppercase tracking-[.18em] text-white/40">{track.language}</p>}
           </div>
           <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs">
             <Metric label="Mood" value={track.moodScore} />
@@ -38,7 +68,7 @@ export function MusicCards({ tracks, theme }) {
           </div>
           <a href={track.spotifyUrl} target="_blank" rel="noreferrer" className="mt-4 flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/10 px-4 py-3 font-bold text-white transition hover:bg-white/15">
             <Icon name="Link" className="h-4 w-4" />
-            Spotify
+            Play full song on Spotify
           </a>
           {playing === track.id && <TinyWave color={theme.accent} />}
         </motion.article>
