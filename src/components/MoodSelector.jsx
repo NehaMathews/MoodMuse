@@ -22,6 +22,7 @@ export function MoodSelector({ current, onSelect }) {
               transition={{ delay: index * 0.035 }}
               whileHover={{ y: -8, scale: 1.02 }}
               onClick={() => onSelect(name, "button")}
+              type="button"
               className={`group min-h-44 rounded-[1.4rem] border p-[1px] text-left transition ${active ? "border-white/70" : "border-white/15"}`}
             >
               <div className={`relative h-full overflow-hidden rounded-[1.35rem] bg-gradient-to-br ${mood.gradient} p-5 shadow-aura`}>
