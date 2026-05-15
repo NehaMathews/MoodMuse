@@ -22,6 +22,7 @@ if (process.env.MONGODB_URI) {
 }
 
 const memoryMoods = [];
+const memoryPlays = [];
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, mongoReady });
@@ -30,6 +31,7 @@ app.get("/api/health", (_req, res) => {
 app.post("/api/moods", async (req, res) => {
   const payload = {
     mood: req.body.mood,
+    userId: req.body.userId || "guest",
     source: req.body.source || "button",
     at: req.body.at ? new Date(req.body.at) : new Date()
   };
@@ -44,18 +46,39 @@ app.post("/api/moods", async (req, res) => {
 });
 
 app.get("/api/recommendations/:mood", async (req, res) => {
-  const tracks = await getSpotifyOrMock(req.params.mood);
+  const languages = String(req.query.languages || "English").split(",").filter(Boolean);
+  const tracks = await getSpotifyOrMock(req.params.mood, languages);
   res.json({ mood: req.params.mood, tracks });
 });
 
-app.get("/api/dashboard", async (_req, res) => {
-  const entries = mongoReady ? await MoodEntry.find().sort({ at: -1 }).limit(100).lean() : memoryMoods;
-  res.json(buildDashboard(entries));
+app.get("/api/search", async (req, res) => {
+  const query = String(req.query.q || "").trim();
+  const languages = String(req.query.languages || "English").split(",").filter(Boolean);
+  if (!query) return res.json({ tracks: [] });
+  const tracks = await searchSpotifyOrMock(query, languages);
+  res.json({ tracks });
 });
 
-async function getSpotifyOrMock(mood) {
+app.post("/api/plays", (req, res) => {
+  memoryPlays.unshift({
+    userId: req.body.userId || "guest",
+    mood: req.body.mood,
+    track: req.body.track,
+    playedAt: new Date()
+  });
+  res.status(201).json({ ok: true });
+});
+
+app.get("/api/dashboard", async (req, res) => {
+  const userId = req.query.userId || "guest";
+  const entries = mongoReady ? await MoodEntry.find({ userId }).sort({ at: -1 }).limit(100).lean() : memoryMoods.filter((entry) => entry.userId === userId);
+  const plays = memoryPlays.filter((play) => play.userId === userId);
+  res.json(buildDashboard(entries, plays));
+});
+
+async function getSpotifyOrMock(mood, languages = ["English"]) {
   if (!process.env.SPOTIFY_CLIENT_ID || !process.env.SPOTIFY_CLIENT_SECRET) {
-    return mockTracks(mood);
+    return mockTracks(mood, languages);
   }
 
   try {
@@ -68,7 +91,7 @@ async function getSpotifyOrMock(mood) {
       body: "grant_type=client_credentials"
     });
     const { access_token } = await tokenResponse.json();
-    const query = encodeURIComponent(`${mood} mood playlist`);
+    const query = encodeURIComponent(`${mood} ${languages.join(" ")} mood songs`);
     const response = await fetch(`https://api.spotify.com/v1/search?q=${query}&type=track&limit=6`, {
       headers: { Authorization: `Bearer ${access_token}` }
     });
@@ -78,20 +101,66 @@ async function getSpotifyOrMock(mood) {
       title: item.name,
       artist: item.artists.map((artist) => artist.name).join(", "),
       albumArt: item.album.images?.[0]?.url,
-      previewUrl: item.preview_url,
+      previewUrl: item.preview_url || mockTracks(mood, languages)[index % mockTracks(mood, languages).length].previewUrl,
       spotifyUrl: item.external_urls.spotify,
       moodScore: 96 - index * 4,
       energy: 84 - index * 3,
       popularity: item.popularity,
-      genre: mood
+      genre: mood,
+      language: languages[index % languages.length] || "English"
     }));
-    return tracks?.length ? tracks : mockTracks(mood);
+    return tracks?.length ? tracks : mockTracks(mood, languages);
   } catch {
-    return mockTracks(mood);
+    return mockTracks(mood, languages);
   }
 }
 
-function buildDashboard(entries) {
+async function searchSpotifyOrMock(query, languages = ["English"]) {
+  if (!process.env.SPOTIFY_CLIENT_ID || !process.env.SPOTIFY_CLIENT_SECRET) {
+    return languages.slice(0, 3).map((language, index) => ({
+      ...mockTracks("Focused", [language])[0],
+      id: `search-${language}-${index}`,
+      title: query,
+      artist: `${language} search`,
+      spotifyUrl: "https://open.spotify.com/search/" + encodeURIComponent(`${query} ${language}`),
+      language
+    }));
+  }
+
+  try {
+    const tokenResponse = await fetch("https://accounts.spotify.com/api/token", {
+      method: "POST",
+      headers: {
+        Authorization: "Basic " + Buffer.from(`${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`).toString("base64"),
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: "grant_type=client_credentials"
+    });
+    const { access_token } = await tokenResponse.json();
+    const response = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(`${query} ${languages.join(" ")}`)}&type=track&limit=6`, {
+      headers: { Authorization: `Bearer ${access_token}` }
+    });
+    const data = await response.json();
+    const fallback = mockTracks("Focused", languages);
+    return data.tracks?.items?.map((item, index) => ({
+      id: item.id,
+      title: item.name,
+      artist: item.artists.map((artist) => artist.name).join(", "),
+      albumArt: item.album.images?.[0]?.url,
+      previewUrl: item.preview_url || fallback[index % fallback.length].previewUrl,
+      spotifyUrl: item.external_urls.spotify,
+      moodScore: 80,
+      energy: 70,
+      popularity: item.popularity,
+      genre: "Search",
+      language: languages[index % languages.length] || "English"
+    })) || fallback;
+  } catch {
+    return mockTracks("Focused", languages);
+  }
+}
+
+function buildDashboard(entries, plays = []) {
   const counts = entries.reduce((acc, entry) => {
     acc[entry.mood] = (acc[entry.mood] || 0) + 1;
     return acc;
@@ -99,8 +168,8 @@ function buildDashboard(entries) {
 
   return {
     summary: entries.length
-      ? `You logged ${entries.length} emotional moments. ${Object.keys(counts)[0] || "Happy"} is leading the room today.`
-      : "Your week is trending introspective with bursts of high-energy recovery.",
+      ? `You logged ${entries.length} emotional moments and played ${plays.length} previews. ${Object.keys(counts)[0] || "Happy"} is leading the room today.`
+      : "Start selecting moods and playing previews to build your personal dashboard.",
     weekly: [
       { day: "Mon", Happy: 4, Sad: 2, Focused: 6 },
       { day: "Tue", Happy: 3, Relaxed: 5, Lonely: 2 },
@@ -115,8 +184,9 @@ function buildDashboard(entries) {
       { name: "Happy", value: 24 },
       { name: "Relaxed", value: 20 }
     ]).slice(0, 5),
-    genres: ["Dream Pop", "Lo-fi", "R&B", "House", "Indie"],
-    heatmap: Array.from({ length: 35 }, (_, i) => (i * 7 + 13) % 9)
+    genres: [...new Set(plays.map((play) => play.track?.genre).filter(Boolean))].slice(0, 5).concat(["Dream Pop", "Lo-fi"]).slice(0, 5),
+    heatmap: Array.from({ length: 35 }, (_, i) => entries.filter((entry) => new Date(entry.at).getDate() % 35 === i).length),
+    recentSongs: plays.map((play) => ({ ...play.track, mood: play.mood, playedAt: play.playedAt })).slice(0, 5)
   };
 }
 

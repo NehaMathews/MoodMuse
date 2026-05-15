@@ -1,6 +1,11 @@
 import mongoose from "mongoose";
 
 const moodEntrySchema = new mongoose.Schema({
+  userId: {
+    type: String,
+    required: true,
+    index: true
+  },
   mood: {
     type: String,
     required: true,
