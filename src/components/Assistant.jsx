@@ -1,23 +1,43 @@
 import { useState } from "react";
 import Icon from "./Icon";
+import { analyzeMoodText, generatePlaylist, searchSong } from "../services/api";
 
-export function Assistant({ mood, playlist, onMood }) {
+export function Assistant({ mood, playlist, onMood, user }) {
   const [messages, setMessages] = useState([
     { role: "ai", text: `I made ${playlist}. It leans into ${mood.toLowerCase()} textures without getting predictable.` }
   ]);
   const [draft, setDraft] = useState("");
+  const [results, setResults] = useState([]);
 
-  function send(event) {
+  async function send(event) {
     event.preventDefault();
     if (!draft.trim()) return;
     const text = draft.trim();
     const lower = text.toLowerCase();
-    const nextMood = lower.includes("calm") ? "Relaxed" : lower.includes("love") ? "Romantic" : lower.includes("work") ? "Focused" : mood;
+    const songQuery = extractSongQuery(text);
+    if (songQuery) {
+      const found = await searchSong(songQuery, user.languages);
+      setResults(found);
+      setMessages((items) => [
+        ...items,
+        { role: "user", text },
+        { role: "ai", text: `I searched for "${songQuery}" across ${(user.languages || ["English"]).join(", ")}. Open a Spotify result below for the full song.` }
+      ]);
+      setDraft("");
+      return;
+    }
+
+    const nextMood = analyzeMoodText(text);
+    const wantsCalm = lower.includes("calm") || lower.includes("relax") || lower.includes("sleep");
+    const wantsEnergy = lower.includes("energy") || lower.includes("workout") || lower.includes("party");
+    const intent = wantsCalm ? "softer pacing and low percussion" : wantsEnergy ? "higher BPM and brighter hooks" : "a balanced emotional arc";
+    const nextPlaylist = generatePlaylist(nextMood);
     setMessages((items) => [
       ...items,
       { role: "user", text },
-      { role: "ai", text: `I hear ${nextMood.toLowerCase()}. Try a playlist with one familiar anchor track, then let the next three songs drift wider.` }
+      { role: "ai", text: `Your message reads as ${nextMood.toLowerCase()}. I would switch you to "${nextPlaylist}" with ${intent}, then open the Spotify links for the full tracks after previewing.` }
     ]);
+    setResults([]);
     onMood(nextMood, "assistant");
     setDraft("");
   }
@@ -38,12 +58,24 @@ export function Assistant({ mood, playlist, onMood }) {
             </div>
           ))}
         </div>
+        {results.length > 0 && (
+          <div className="mt-5 grid gap-3 md:grid-cols-3">
+            {results.map((track) => (
+              <a key={track.id} href={track.spotifyUrl} target="_blank" rel="noreferrer" className="rounded-2xl border border-white/10 bg-white/10 p-3 transition hover:bg-white/20">
+                <img src={track.albumArt} alt="" className="mb-3 aspect-square w-full rounded-xl object-cover" />
+                <p className="font-black text-white">{track.title}</p>
+                <p className="text-sm text-white/55">{track.artist}</p>
+                <p className="mt-2 text-xs font-bold uppercase tracking-[.18em] text-white/45">{track.language}</p>
+              </a>
+            ))}
+          </div>
+        )}
         <form onSubmit={send} className="mt-5 flex gap-3">
           <input
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-white/10 px-4 text-white outline-none focus:border-white/35"
-            placeholder="Ask for a rainy drive mix..."
+            placeholder="Ask for a rainy mix, or search Kesariya..."
           />
           <button className="icon-button bg-white text-zinc-950" aria-label="Send">
             <Icon name="Send" />
@@ -52,4 +84,15 @@ export function Assistant({ mood, playlist, onMood }) {
       </div>
     </section>
   );
+}
+
+function extractSongQuery(text) {
+  const cleaned = text.trim();
+  const patterns = [
+    /(?:search|find|play|look up)\s+(?:for\s+)?(?:the\s+)?(?:song\s+)?["']?(.+?)["']?$/i,
+    /(?:can you|please)\s+(?:search|find|play)\s+["']?(.+?)["']?$/i
+  ];
+  const match = patterns.map((pattern) => cleaned.match(pattern)).find(Boolean);
+  if (!match) return "";
+  return match[1].replace(/\bon spotify\b/i, "").trim();
 }
