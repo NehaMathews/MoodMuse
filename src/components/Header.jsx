@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import Icon from "./Icon";
 import { useClock } from "../hooks/useClock";
 
-export function Header({ dark, setDark }) {
+export function Header({ dark, setDark, user, onLogout }) {
   const clock = useClock();
 
   return (
@@ -24,6 +24,7 @@ export function Header({ dark, setDark }) {
         <a href="#assistant">Assistant</a>
       </nav>
       <div className="flex items-center gap-2">
+        <span className="hidden rounded-full border border-white/15 px-3 py-2 text-sm text-white/80 md:block">{user.name} - {(user.languages || ["English"]).join(", ")}</span>
         <span className="hidden rounded-full border border-white/15 px-3 py-2 text-sm text-white/80 sm:block">{clock}</span>
         <button
           onClick={() => setDark((value) => !value)}
@@ -31,6 +32,9 @@ export function Header({ dark, setDark }) {
           aria-label="Toggle theme"
         >
           <Icon name={dark ? "Sun" : "Moon"} />
+        </button>
+        <button onClick={onLogout} className="hidden rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/20 sm:block" type="button">
+          Logout
         </button>
       </div>
     </motion.header>

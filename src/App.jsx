@@ -10,44 +10,58 @@ import { MusicCards } from "./components/MusicCards";
 import { Visualizer } from "./components/Visualizer";
 import { Dashboard } from "./components/Dashboard";
 import { Assistant } from "./components/Assistant";
-import { generatePlaylist, getRecommendations, saveMood } from "./services/api";
+import { Login } from "./components/Login";
+import { LanguagePreferences } from "./components/LanguagePreferences";
+import { generatePlaylist, getRecommendations, getStoredUser, logoutUser, saveMood } from "./services/api";
 import { moods } from "./data/moods";
 
 export default function App() {
+  const [user, setUser] = useState(() => getStoredUser());
   const [mood, setMood] = useState("Happy");
   const [source, setSource] = useState("button");
   const [tracks, setTracks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dark, setDark] = useState(true);
+  const [activityVersion, setActivityVersion] = useState(0);
   const theme = moods[mood];
   const playlist = useMemo(() => generatePlaylist(mood), [mood]);
 
   const selectMood = useCallback((nextMood, nextSource = "button") => {
     setMood(nextMood);
     setSource(nextSource);
-    saveMood({ mood: nextMood, source: nextSource, at: new Date().toISOString() });
-  }, []);
+    saveMood({ userId: user?.id, mood: nextMood, source: nextSource, at: new Date().toISOString() });
+    window.setTimeout(() => document.getElementById("recommendations")?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+  }, [user?.id]);
 
   useEffect(() => {
+    if (!user) return;
     setLoading(true);
-    getRecommendations(mood).then((items) => {
+    getRecommendations(mood, user.id, user.languages).then((items) => {
       setTracks(items);
       setLoading(false);
     });
-  }, [mood]);
+  }, [mood, user]);
+
+  if (!user) return <Login onLogin={setUser} />;
+
+  function logout() {
+    logoutUser();
+    setUser(null);
+  }
 
   return (
     <main className={`${dark ? "dark" : "light"} min-h-screen overflow-hidden text-white`}>
-      <Ambience mood={mood} theme={theme} />
+      <Ambience mood={mood} theme={theme} dark={dark} />
       <CursorGlow color={theme.accent} />
-      <Header dark={dark} setDark={setDark} />
+      <Header dark={dark} setDark={setDark} user={user} onLogout={logout} />
       <Hero mood={mood} theme={theme} playlist={playlist} />
+      <LanguagePreferences user={user} onUpdate={setUser} />
       <MoodSelector current={mood} onSelect={selectMood} />
       <section className="section grid gap-5 lg:grid-cols-2">
         <TextAnalyzer onDetect={selectMood} mood={mood} />
         <FaceEmotion onDetect={selectMood} theme={theme} />
       </section>
-      <section className="section">
+      <section id="recommendations" className="section">
         <div className="section-head">
           <span>Recommendations</span>
           <h2>{playlist}</h2>
@@ -60,14 +74,14 @@ export default function App() {
             </motion.div>
           ) : (
             <motion.div key={mood} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <MusicCards tracks={tracks} theme={theme} />
+              <MusicCards tracks={tracks} theme={theme} mood={mood} user={user} onPlayed={() => setActivityVersion((value) => value + 1)} />
             </motion.div>
           )}
         </AnimatePresence>
       </section>
       <Visualizer mood={mood} theme={theme} />
-      <Dashboard theme={theme} tracks={tracks} />
-      <Assistant mood={mood} playlist={playlist} onMood={selectMood} />
+      <Dashboard theme={theme} tracks={tracks} user={user} mood={mood} activityVersion={activityVersion} />
+      <Assistant mood={mood} playlist={playlist} onMood={selectMood} user={user} />
       <footer className="mx-auto w-[min(1180px,calc(100%-32px))] pb-10 pt-4 text-center text-sm text-white/50">
         MoodMuse blends sentiment, mood analytics, and music curation into one emotional interface.
       </footer>
