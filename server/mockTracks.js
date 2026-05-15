@@ -19,7 +19,15 @@ const imageIds = [
   "1500530855697-b586d89ba3ee"
 ];
 
-export function mockTracks(mood) {
+const previewUrls = [
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3",
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3"
+];
+
+export function mockTracks(mood, languages = ["English"]) {
   return (data[mood] || data.Happy).map(([title, artist, moodScore, energy, popularity], index) => ({
     id: `${mood}-${index}`,
     title,
@@ -28,8 +36,9 @@ export function mockTracks(mood) {
     energy,
     popularity,
     albumArt: `https://images.unsplash.com/photo-${imageIds[index % imageIds.length]}?auto=format&fit=crop&w=600&q=80&sig=${mood}-${index}`,
-    previewUrl: "",
+    previewUrl: previewUrls[index % previewUrls.length],
     spotifyUrl: "https://open.spotify.com/search/" + encodeURIComponent(`${title} ${artist}`),
-    genre: ["Dream Pop", "R&B", "Indie", "Electronic", "Soul"][index % 5]
+    genre: ["Dream Pop", "R&B", "Indie", "Electronic", "Soul"][index % 5],
+    language: languages[index % languages.length] || "English"
   }));
 }
