@@ -5,5 +5,17 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173
+  },
+  build: {
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("face-api.js") || id.includes("@tensorflow")) {
+            return "face-analysis";
+          }
+        }
+      }
+    }
   }
 });
