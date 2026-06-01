@@ -3,7 +3,7 @@ import express from "express";
 import cors from "cors";
 import mongoose from "mongoose";
 import MoodEntry from "./models/MoodEntry.js";
-import { mockTracks } from "./mockTracks.js";
+import { mockSearchTracks, mockTracks } from "./mockTracks.js";
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -91,25 +91,28 @@ async function getSpotifyOrMock(mood, languages = ["English"]) {
       body: "grant_type=client_credentials"
     });
     const { access_token } = await tokenResponse.json();
-    const query = encodeURIComponent(`${mood} ${languages.join(" ")} mood songs`);
-    const response = await fetch(`https://api.spotify.com/v1/search?q=${query}&type=track&limit=6`, {
-      headers: { Authorization: `Bearer ${access_token}` }
-    });
-    const data = await response.json();
-    const tracks = data.tracks?.items?.map((item, index) => ({
-      id: item.id,
-      title: item.name,
-      artist: item.artists.map((artist) => artist.name).join(", "),
-      albumArt: item.album.images?.[0]?.url,
-      previewUrl: item.preview_url || mockTracks(mood, languages)[index % mockTracks(mood, languages).length].previewUrl,
-      spotifyUrl: item.external_urls.spotify,
-      moodScore: 96 - index * 4,
-      energy: 84 - index * 3,
-      popularity: item.popularity,
-      genre: mood,
-      language: languages[index % languages.length] || "English"
+    const perLanguage = await Promise.all(languages.map(async (language) => {
+      const query = encodeURIComponent(`${mood} ${language} songs`);
+      const response = await fetch(`https://api.spotify.com/v1/search?q=${query}&type=track&limit=3`, {
+        headers: { Authorization: `Bearer ${access_token}` }
+      });
+      const data = await response.json();
+      return data.tracks?.items?.map((item, index) => ({
+        id: item.id,
+        title: item.name,
+        artist: item.artists.map((artist) => artist.name).join(", "),
+        albumArt: item.album.images?.[0]?.url,
+        previewUrl: item.preview_url || mockTracks(mood, [language])[index % mockTracks(mood, [language]).length].previewUrl,
+        spotifyUrl: item.external_urls.spotify,
+        moodScore: 96 - index * 4,
+        energy: 84 - index * 3,
+        popularity: item.popularity,
+        genre: mood,
+        language
+      })) || [];
     }));
-    return tracks?.length ? tracks : mockTracks(mood, languages);
+    const tracks = perLanguage.flat().slice(0, 6);
+    return tracks.length ? tracks : mockTracks(mood, languages);
   } catch {
     return mockTracks(mood, languages);
   }
@@ -117,14 +120,7 @@ async function getSpotifyOrMock(mood, languages = ["English"]) {
 
 async function searchSpotifyOrMock(query, languages = ["English"]) {
   if (!process.env.SPOTIFY_CLIENT_ID || !process.env.SPOTIFY_CLIENT_SECRET) {
-    return languages.slice(0, 3).map((language, index) => ({
-      ...mockTracks("Focused", [language])[0],
-      id: `search-${language}-${index}`,
-      title: query,
-      artist: `${language} search`,
-      spotifyUrl: "https://open.spotify.com/search/" + encodeURIComponent(`${query} ${language}`),
-      language
-    }));
+    return mockSearchTracks(query, languages);
   }
 
   try {
@@ -137,27 +133,43 @@ async function searchSpotifyOrMock(query, languages = ["English"]) {
       body: "grant_type=client_credentials"
     });
     const { access_token } = await tokenResponse.json();
-    const response = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(`${query} ${languages.join(" ")}`)}&type=track&limit=6`, {
-      headers: { Authorization: `Bearer ${access_token}` }
-    });
-    const data = await response.json();
-    const fallback = mockTracks("Focused", languages);
-    return data.tracks?.items?.map((item, index) => ({
-      id: item.id,
-      title: item.name,
-      artist: item.artists.map((artist) => artist.name).join(", "),
-      albumArt: item.album.images?.[0]?.url,
-      previewUrl: item.preview_url || fallback[index % fallback.length].previewUrl,
-      spotifyUrl: item.external_urls.spotify,
-      moodScore: 80,
-      energy: 70,
-      popularity: item.popularity,
-      genre: "Search",
-      language: languages[index % languages.length] || "English"
-    })) || fallback;
+    const perLanguage = await Promise.all(languages.map(async (language) => {
+      const response = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(`${query} ${language}`)}&type=track&limit=2`, {
+        headers: { Authorization: `Bearer ${access_token}` }
+      });
+      const data = await response.json();
+      return data.tracks?.items?.map((item, index) => ({
+        id: item.id,
+        title: item.name,
+        artist: item.artists.map((artist) => artist.name).join(", "),
+        albumArt: item.album.images?.[0]?.url,
+        previewUrl: item.preview_url || mockTracks("Focused", [language])[index % mockTracks("Focused", [language]).length].previewUrl,
+        spotifyUrl: item.external_urls.spotify,
+        moodScore: 80,
+        energy: 70,
+        popularity: item.popularity,
+        genre: "Search",
+        language
+      })) || [];
+    }));
+    const tracks = dedupeSearchResults(perLanguage.flat(), query).slice(0, 6);
+    return tracks.length ? tracks : mockSearchTracks(query, languages);
   } catch {
-    return mockTracks("Focused", languages);
+    return mockSearchTracks(query, languages);
   }
+}
+
+function dedupeSearchResults(tracks, query) {
+  const normalizedQuery = query.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const seen = new Set();
+  return tracks.filter((track) => {
+    const title = track.title.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    if (!title.includes(normalizedQuery) && !normalizedQuery.includes(title)) return false;
+    const key = `${title}-${track.artist.toLowerCase()}-${track.language}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function buildDashboard(entries, plays = []) {
