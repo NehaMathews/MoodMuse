@@ -17,14 +17,6 @@ const cover = (mood, index) =>
     "1511379938547-c1f69419868d"
   ][index % 5]}?auto=format&fit=crop&w=600&q=80&sat=15&sig=${mood}-${index}`;
 
-const previewUrls = [
-  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
-  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
-  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
-  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3",
-  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3"
-];
-
 const languageSongs = {
   English: {
     Happy: [["Golden Hour Glow", "Luna Vale"], ["Sunroof Cinema", "The Daybreaks"], ["Sweet Motion", "Mika Bloom"]],
@@ -77,6 +69,31 @@ const languageSongs = {
   }
 };
 
+const normalized = (value) => value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+
+const songSearchIndex = Object.entries(languageSongs).flatMap(([language, moodCatalog]) =>
+  Object.entries(moodCatalog).flatMap(([mood, songs]) =>
+    songs.map(([title, artist]) => ({ title, artist, singer: artist, language, mood, key: normalized(title) }))
+  )
+);
+
+const knownSongCatalog = [
+  { title: "Mehabooba", aliases: ["mehbooba", "mehabooba"], singer: "Ananya Bhat", movie: "KGF Chapter 2", language: "Hindi", mood: "Romantic" },
+  { title: "Mehabooba", aliases: ["mehbooba", "mehabooba"], singer: "Ananya Bhat", movie: "KGF Chapter 2", language: "Telugu", mood: "Romantic" },
+  { title: "Mehabooba", aliases: ["mehbooba", "mehabooba"], singer: "Ananya Bhat", movie: "KGF Chapter 2", language: "Tamil", mood: "Romantic" },
+  { title: "Mehabooba", aliases: ["mehbooba", "mehabooba"], singer: "Ananya Bhat", movie: "KGF Chapter 2", language: "Malayalam", mood: "Romantic" },
+  { title: "Toofan", aliases: ["toofan", "kgf toofan"], singer: "Brijesh Shandilya", movie: "KGF Chapter 2", language: "Hindi", mood: "Energetic" },
+  { title: "Sulthan", aliases: ["sulthan", "kgf sulthan"], singer: "Mohan Krishna", movie: "KGF Chapter 2", language: "Telugu", mood: "Energetic" },
+  { title: "Salaam Rocky Bhai", aliases: ["salaam rocky bhai", "rocky bhai"], singer: "Vijay Prakash", movie: "KGF Chapter 1", language: "Hindi", mood: "Energetic" },
+  { title: "Mehbooba Mehbooba", aliases: ["mehbooba", "mehbooba mehbooba"], singer: "R D Burman", movie: "Sholay", language: "Hindi", mood: "Energetic" },
+  { title: "Mehbooba", aliases: ["mehbooba"], singer: "Neha Kakkar", movie: "Fukrey Returns", language: "Hindi", mood: "Energetic" },
+  { title: "Kesariya", aliases: ["kesariya"], singer: "Arijit Singh", movie: "Brahmastra", language: "Hindi", mood: "Romantic" },
+  { title: "Channa Mereya", aliases: ["channa mereya"], singer: "Arijit Singh", movie: "Ae Dil Hai Mushkil", language: "Hindi", mood: "Sad" },
+  { title: "Raabta", aliases: ["raabta"], singer: "Arijit Singh", movie: "Agent Vinod", language: "Hindi", mood: "Romantic" },
+  { title: "Tum Se Hi", aliases: ["tum se hi"], singer: "Mohit Chauhan", movie: "Jab We Met", language: "Hindi", mood: "Romantic" },
+  { title: "Naatu Naatu", aliases: ["naatu naatu"], singer: "Rahul Sipligunj", movie: "RRR", language: "Telugu", mood: "Energetic" }
+].map((song) => ({ ...song, key: normalized(song.title), movieKey: normalized(song.movie || ""), singerKey: normalized(song.singer || "") }));
+
 const localTracks = (mood, languages = ["English"]) => {
   const selectedLanguages = languages.length ? languages : ["English"];
   const songs = selectedLanguages.flatMap((language) => {
@@ -95,7 +112,7 @@ const localTracks = (mood, languages = ["English"]) => {
     energy,
     popularity,
     albumArt: cover(mood, index),
-    previewUrl: previewUrls[index % previewUrls.length],
+    previewUrl: "",
     spotifyUrl: "https://open.spotify.com/search/" + encodeURIComponent(`${title} ${artist}`),
     genre: ["Dream Pop", "R&B", "Indie", "Electronic", "Soul"][index % 5],
     language
@@ -107,7 +124,7 @@ export async function getRecommendations(mood, userId, languages = ["English"]) 
   try {
     const { data } = await api.get(`/recommendations/${mood}`, { params: { userId, languages: languages.join(",") } });
     return data.tracks?.length
-      ? data.tracks.map((track, index) => ({ ...track, previewUrl: track.previewUrl || previewUrls[index % previewUrls.length] }))
+      ? data.tracks.map((track) => ({ ...track, previewUrl: track.previewUrl || "" }))
       : localTracks(mood, languages);
   } catch {
     return localTracks(mood, languages);
@@ -117,24 +134,62 @@ export async function getRecommendations(mood, userId, languages = ["English"]) 
 export async function searchSong(query, languages = ["English"]) {
   const cleanQuery = query.trim();
   if (!cleanQuery) return [];
+  const localMatches = localSearchSong(cleanQuery, languages);
+  if (localMatches.length) return localMatches;
   try {
     const { data } = await api.get("/search", { params: { q: cleanQuery, languages: languages.join(",") } });
     if (data.tracks?.length) return data.tracks;
   } catch {
     // Local fallback below.
   }
-  return languages.slice(0, 3).map((language, index) => ({
-    id: `search-${language}-${index}`,
-    title: cleanQuery,
-    artist: `${language} results`,
+  return localSearchSong(cleanQuery, languages);
+}
+
+export function searchMusicCatalog(query, languages = ["English"], kind = "song") {
+  return localSearchSong(query, languages, kind);
+}
+
+export function catalogLanguages(query, kind = "movie") {
+  const queryKey = normalized(query);
+  return [...new Set(knownSongCatalog
+    .filter((song) => kind === "movie" ? song.movieKey.includes(queryKey) || queryKey.includes(song.movieKey) : song.singerKey.includes(queryKey) || queryKey.includes(song.singerKey))
+    .map((song) => song.language))];
+}
+
+function localSearchSong(query, languages = ["English"], kind = "song") {
+  const languageSet = new Set(languages.length ? languages : ["English"]);
+  const queryKey = normalized(query);
+  const catalogMatches = knownSongCatalog.filter((song) => {
+    const inLanguage = languageSet.has(song.language);
+    if (!inLanguage) return false;
+    if (kind === "movie") return song.movieKey.includes(queryKey) || queryKey.includes(song.movieKey);
+    if (kind === "singer") return song.singerKey.includes(queryKey) || queryKey.includes(song.singerKey);
+    return song.key.includes(queryKey) || queryKey.includes(song.key) || song.aliases.some((alias) => normalized(alias).includes(queryKey) || queryKey.includes(normalized(alias)));
+  });
+  const basicMatches = kind === "song" ? songSearchIndex.filter((song) =>
+    languageSet.has(song.language) && (song.key.includes(queryKey) || queryKey.includes(song.key))
+  ) : [];
+  const allLanguageMatches = catalogMatches.length || kind !== "song" ? [] : knownSongCatalog.filter((song) =>
+    song.key.includes(queryKey) || queryKey.includes(song.key) || song.aliases.some((alias) => normalized(alias).includes(queryKey) || queryKey.includes(normalized(alias)))
+  );
+  const singerFallback = catalogMatches.length || kind !== "singer" ? [] : knownSongCatalog.filter((song) =>
+    song.singerKey.includes(queryKey) || queryKey.includes(song.singerKey)
+  );
+  const exactOrPartial = [...catalogMatches, ...basicMatches, ...allLanguageMatches, ...singerFallback];
+  return exactOrPartial.slice(0, 8).map((song, index) => ({
+    id: `search-${song.language}-${song.key}-${index}`,
+    title: song.title,
+    artist: song.singer || song.artist,
+    movie: song.movie,
+    singer: song.singer || song.artist,
     moodScore: 82,
-    energy: 68,
-    popularity: 80,
-    albumArt: cover("Focused", index),
-    previewUrl: previewUrls[index % previewUrls.length],
-    spotifyUrl: "https://open.spotify.com/search/" + encodeURIComponent(`${cleanQuery} ${language}`),
+    energy: song.mood === "Energetic" ? 92 : 68,
+    popularity: 84,
+    albumArt: cover(song.mood || "Focused", index),
+    previewUrl: "",
+    spotifyUrl: "https://open.spotify.com/search/" + encodeURIComponent(`${song.title} ${song.singer || song.artist} ${song.movie || ""} ${song.language}`),
     genre: "Search",
-    language
+    language: song.language
   }));
 }
 
@@ -150,7 +205,9 @@ export async function saveMood(payload) {
 export async function recordPlayed(userId, track, mood) {
   const key = `moodmuse:plays:${userId}`;
   const plays = JSON.parse(localStorage.getItem(key) || "[]");
-  localStorage.setItem(key, JSON.stringify([{ ...track, mood, playedAt: new Date().toISOString() }, ...plays].slice(0, 40)));
+  const nextPlay = { ...track, mood, playedAt: new Date().toISOString() };
+  const deduped = plays.filter((play) => `${play.title}-${play.artist}-${play.language}` !== `${track.title}-${track.artist}-${track.language}`);
+  localStorage.setItem(key, JSON.stringify([nextPlay, ...deduped].slice(0, 40)));
   try {
     await api.post("/plays", { userId, track, mood });
   } catch {
@@ -167,17 +224,18 @@ export async function getDashboard(userId) {
   }
 }
 
-export function loginUser(userId, password, languages = ["English"]) {
+export function loginUser(userId, password) {
   const cleanId = userId.trim().toLowerCase();
   if (!cleanId || !password.trim()) throw new Error("Enter a user id and password.");
   const users = JSON.parse(localStorage.getItem("moodmuse:users") || "{}");
-  if (users[cleanId] && users[cleanId].password !== password) {
+  const existing = users[cleanId];
+  if (existing && existing.password !== password) {
     throw new Error("That password does not match this user id.");
   }
-  users[cleanId] = { ...users[cleanId], password, languages, lastLogin: new Date().toISOString() };
+  users[cleanId] = { ...existing, password, lastLogin: new Date().toISOString() };
   localStorage.setItem("moodmuse:users", JSON.stringify(users));
   localStorage.setItem("moodmuse:currentUser", cleanId);
-  return userFromId(cleanId, users[cleanId]);
+  return { ...userFromId(cleanId, users[cleanId]), needsLanguageSetup: !existing || !existing.languages?.length };
 }
 
 export function getStoredUser() {
