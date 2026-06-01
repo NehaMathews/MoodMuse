@@ -2,14 +2,14 @@ import { motion } from "framer-motion";
 
 export function Ambience({ mood, theme, dark }) {
   return (
-    <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+    <div className={`pointer-events-none fixed inset-0 -z-10 overflow-hidden ${dark ? "" : "day-ambience"}`}>
       <motion.div
         key={mood}
         initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        className={`absolute inset-0 bg-gradient-to-br ${theme.gradient}`}
+        animate={{ opacity: dark ? 1 : 0.24 }}
+        className={`absolute inset-0 ${dark ? `bg-gradient-to-br ${theme.gradient}` : "bg-white"}`}
       />
-      <div className={dark ? "absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,.22),transparent_32%),linear-gradient(120deg,rgba(0,0,0,.48),rgba(0,0,0,.18)_44%,rgba(0,0,0,.58))]" : "absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,.75),transparent_34%),linear-gradient(120deg,rgba(255,255,255,.34),rgba(255,255,255,.12)_44%,rgba(0,0,0,.22))]"} />
+      <div className={dark ? "absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,.22),transparent_32%),linear-gradient(120deg,rgba(0,0,0,.48),rgba(0,0,0,.18)_44%,rgba(0,0,0,.58))]" : "absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,.95),transparent_34%),linear-gradient(120deg,rgba(255,255,255,.88),rgba(255,255,255,.72)_44%,rgba(255,255,255,.82))]"} />
       <motion.div
         animate={{ backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"] }}
         transition={{ duration: 18, repeat: Infinity, ease: "linear" }}
