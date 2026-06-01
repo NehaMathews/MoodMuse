@@ -7,8 +7,7 @@ const emptyScores = [
   { name: "Happy", value: 0 },
   { name: "Sad", value: 0 },
   { name: "Angry", value: 0 },
-  { name: "Relaxed", value: 0 },
-  { name: "Energetic", value: 0 }
+  { name: "Relaxed", value: 0 }
 ];
 
 export function FaceEmotion({ onDetect, theme }) {

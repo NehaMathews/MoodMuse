@@ -23,8 +23,7 @@ async function analyzeWithFaceApi(canvas) {
       { name: "Happy", value: Math.round((expressions.happy || 0) * 100) },
       { name: "Sad", value: Math.round((expressions.sad || 0) * 100) },
       { name: "Angry", value: Math.round((expressions.angry || 0) * 100) },
-      { name: "Relaxed", value: Math.round((expressions.neutral || 0) * 100) },
-      { name: "Energetic", value: Math.round((expressions.surprised || 0) * 100) }
+      { name: "Relaxed", value: Math.round(((expressions.neutral || 0) + (expressions.surprised || 0) * 0.35) * 100) }
     ];
   } catch {
     return null;
@@ -62,8 +61,7 @@ function analyzeImageTone(canvas) {
     Happy: brightness > 118 && warmth > 4 ? 74 : 30,
     Sad: brightness < 82 ? 76 : 24,
     Angry: redness > 14 ? 78 : 22,
-    Relaxed: brightness >= 82 && brightness <= 145 && Math.abs(warmth) < 22 ? 66 : 28,
-    Energetic: brightness > 145 || warmth > 34 ? 70 : 26
+    Relaxed: brightness >= 82 && brightness <= 145 && Math.abs(warmth) < 22 ? 66 : 28
   };
   const total = Object.values(raw).reduce((sum, value) => sum + value, 0);
   const scores = Object.entries(raw).map(([name, value]) => ({ name, value: Math.round((value / total) * 100) }));
