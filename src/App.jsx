@@ -11,6 +11,7 @@ import { Visualizer } from "./components/Visualizer";
 import { Dashboard } from "./components/Dashboard";
 import { Assistant } from "./components/Assistant";
 import { Login } from "./components/Login";
+import { LanguageSetup } from "./components/LanguageSetup";
 import { LanguagePreferences } from "./components/LanguagePreferences";
 import { generatePlaylist, getRecommendations, getStoredUser, logoutUser, saveMood } from "./services/api";
 import { moods } from "./data/moods";
@@ -43,6 +44,7 @@ export default function App() {
   }, [mood, user]);
 
   if (!user) return <Login onLogin={setUser} />;
+  if (user.needsLanguageSetup) return <LanguageSetup user={user} onComplete={setUser} />;
 
   function logout() {
     logoutUser();
@@ -81,7 +83,7 @@ export default function App() {
       </section>
       <Visualizer mood={mood} theme={theme} />
       <Dashboard theme={theme} tracks={tracks} user={user} mood={mood} activityVersion={activityVersion} />
-      <Assistant mood={mood} playlist={playlist} onMood={selectMood} user={user} />
+      <Assistant mood={mood} playlist={playlist} onMood={selectMood} user={user} onActivity={() => setActivityVersion((value) => value + 1)} />
       <footer className="mx-auto w-[min(1180px,calc(100%-32px))] pb-10 pt-4 text-center text-sm text-white/50">
         MoodMuse blends sentiment, mood analytics, and music curation into one emotional interface.
       </footer>
