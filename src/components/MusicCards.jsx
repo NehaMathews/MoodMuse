@@ -8,6 +8,10 @@ export function MusicCards({ tracks, theme, mood, user, onPlayed }) {
   const audioRef = useRef(null);
 
   function playTrack(track) {
+    if (!track.previewUrl) {
+      window.open(track.spotifyUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
     if (playing === track.id) {
       audioRef.current?.pause();
       setPlaying(null);
@@ -53,8 +57,9 @@ export function MusicCards({ tracks, theme, mood, user, onPlayed }) {
               aria-label="Play preview"
               type="button"
             >
-              <Icon name={playing === track.id ? "Pause" : "Play"} className="h-5 w-5" />
+            <Icon name={playing === track.id ? "Pause" : "Play"} className="h-5 w-5" />
             </button>
+            {!track.previewUrl && <span className="absolute bottom-4 left-4 rounded-full bg-black/60 px-3 py-2 text-xs font-bold text-white">Spotify only</span>}
           </div>
           <div className="mt-4">
             <h3 className="text-xl font-black text-white">{track.title}</h3>
