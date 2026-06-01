@@ -66,15 +66,16 @@ export function Dashboard({ theme, tracks, user, mood, activityVersion }) {
         <div className="panel">
           <p className="eyebrow">Recently played</p>
           <div className="mt-5 space-y-3">
-            {(data.recentSongs?.length ? data.recentSongs : tracks).slice(0, 3).map((track) => (
-              <div key={track.id} className="flex items-center gap-3 rounded-2xl bg-white/10 p-3">
+            {(data.recentSongs || []).slice(0, 5).map((track) => (
+              <a key={`${track.id}-${track.playedAt || track.spotifyUrl}`} href={track.spotifyUrl} target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-2xl bg-white/10 p-3 transition hover:bg-white/15">
                 <img src={track.albumArt} alt="" className="h-12 w-12 rounded-xl object-cover" />
                 <div>
                   <p className="font-bold text-white">{track.title}</p>
-                  <p className="text-sm text-white/50">{track.artist}</p>
+                  <p className="text-sm text-white/50">{track.artist} {track.language ? `- ${track.language}` : ""}</p>
                 </div>
-              </div>
+              </a>
             ))}
+            {!data.recentSongs?.length && <p className="rounded-2xl bg-white/10 p-4 text-sm text-white/55">Play a preview or open an assistant search result to start this list.</p>}
           </div>
         </div>
       </div>
